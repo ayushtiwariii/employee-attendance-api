@@ -871,7 +871,7 @@ def attendance_filter(emp_code,date_from,date_to,status):
 
     f={}
 
-    if emp_code:f["emp_code"]=emp_code
+    if emp_code is not None:f["emp_code"]=emp_code
 
     if date_from:f.setdefault("date",{})["$gte"]=date_from
 
@@ -898,6 +898,8 @@ def explain(endpoint:str,emp_code:Optional[str]=None,month:Optional[str]=None,de
             if v:parse_range(v,n)
 
         if date_from and date_to and date_from>date_to:raise HTTPException(422,"Invalid date range")
+
+        if status is not None and status not in STATUSES:raise HTTPException(422,"Invalid status")
 
         filt=attendance_filter(emp_code,date_from,date_to,status)
 
