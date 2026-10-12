@@ -551,7 +551,13 @@ def punch_out(payload: PunchOutRequest):
 
     fields=calc_fields(emp,{**rec,"punch_out":po})
 
-    result=d.attendance_logs.update_one({"emp_code":payload.emp_code,"date":rec["date"],"punch_out":None}, {"$set":{"punch_out":po,**fields}})
+    # Guard every input used to calculate derived values. A simultaneous regularization
+    # may change punch_in/status while leaving punch_out null; that must not be overwritten.
+    result=d.attendance_logs.update_one(
+        {"emp_code":payload.emp_code,"date":rec["date"],"punch_out":None,
+         "punch_in":rec.get("punch_in"),"status":rec.get("status")},
+        {"$set":{"punch_out":po,**fields}}
+    )
 
     if result.modified_count!=1:raise HTTPException(409,"Already punched out")
 
@@ -617,7 +623,7 @@ def regularize(emp_code:str,date:str,payload:RegularizeRequest):
 
     if new["status"] in {"ABSENT","LEAVE"}:
 
-        if "punch_in" in data and data["punch_in"] is not None or "punch_out" in data and data["punch_out"] is not None:raise HTTPException(422,"ABSENT/LEAVE cannot have punch times")
+        if "punch_in" in data or "punch_out" in data:raise HTTPException(422,"ABSENT/LEAVE cannot include punch_in or punch_out")
 
         new["punch_in"]=new["punch_out"]=None
 
@@ -651,7 +657,13 @@ def regularize(emp_code:str,date:str,payload:RegularizeRequest):
 
     # Optimistic concurrency: compare old fields and atomically append history.
 
-    filt={"emp_code":emp_code,"date":date,"status":old.get("status"),"punch_in":old.get("punch_in"),"punch_out":old.get("punch_out"),"history":old.get("history",[])}
+    filt={"emp_code":emp_code,"date":date,"status":old.get("status"),"punch_in":old.get("punch_in"),"punch_out":old.get("punch_out")}
+    # Legacy records may omit history entirely. Matching history=[] would never match
+    # a missing field, so use an explicit existence predicate for that case.
+    if "history" in old:
+        filt["history"]=old["history"]
+    else:
+        filt["history"]={"$exists":False}
 
     update={k:new[k] for k in ["status","punch_in","punch_out","work_hours","late_minutes","overtime_minutes","half_day"]}
 
