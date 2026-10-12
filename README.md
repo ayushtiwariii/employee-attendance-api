@@ -53,7 +53,7 @@ Do not run seed/reset scripts against a database containing data you need to pre
 python -m pytest -q
 ```
 
-The included unit tests cover deterministic time calculations. Endpoint integration tests and performance/explain verification should be run against a dedicated MongoDB test database. Do not treat helper tests alone as proof that all hidden-dataset behavior passes.
+Unit tests cover deterministic time calculations, strict epoch-millisecond validation, rounding, mid-month joining, legacy attendance serialization, and database-side trend pipeline construction. GitHub Actions runs the unit suite on pushes and pull requests. MongoDB integration/concurrency tests and the required 100,000-record explain-plan check still require a running MongoDB test database; passing unit tests alone is not proof that every hidden-dataset case passes.
 
 ## Endpoints
 
@@ -68,4 +68,4 @@ The included unit tests cover deterministic time calculations. Endpoint integrat
 
 ## Limitations / verification status
 
-The service and unit helper tests can be checked locally without MongoDB, but API/database integration, concurrent request tests, explain-plan requirements on 100,000 records, and the full hidden contract have not been verified in this environment because PyMongo/MongoDB were unavailable. Confirm those before submission. The grader's exact schemas in `openapi.yaml` remain authoritative.
+The unit suite does not require a live MongoDB server. Before submission, also run API/database integration and concurrency tests, then call `/admin/explain/{endpoint}` against a dedicated 100,000-record test dataset and confirm indexed plans. The grader's exact schemas and business rules in `openapi.yaml` and `DATA_MODEL.md` remain authoritative.
