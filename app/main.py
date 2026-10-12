@@ -148,7 +148,7 @@ class PunchOutRequest(BaseModel):
 
     punched_at: Optional[int] = None
 
-    @field_validator("punched_at")
+    @field_validator("punched_at", mode="before")
 
     @classmethod
 
