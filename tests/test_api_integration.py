@@ -122,3 +122,45 @@ def test_department_summary_counts_employee_with_no_logs(api):
         "leave_count": 0,
         "on_duty_count": 0,
     }]
+
+
+def test_attendance_explain_uses_index_with_100k_records(api):
+    from datetime import date, timedelta
+
+    database = api_module.db
+    start = date(2026, 1, 1)
+    documents = []
+    for employee_no in range(1, 301):
+        code = f"EMP{employee_no:04d}"
+        for day_offset in range(334):
+            day = (start + timedelta(days=day_offset)).isoformat()
+            documents.append({
+                "emp_code": code,
+                "date": day,
+                "status": "PRESENT",
+                "punch_in": None,
+                "punch_out": None,
+                "work_hours": None,
+                "late_minutes": 0,
+                "overtime_minutes": 0,
+            })
+        if len(documents) >= 5000:
+            database.attendance_logs.insert_many(documents, ordered=False)
+            documents.clear()
+    if documents:
+        database.attendance_logs.insert_many(documents, ordered=False)
+
+    assert database.attendance_logs.count_documents({}) == 100200
+    response = api.get("/admin/explain/attendance_list", params={
+        "date_from": "2026-01-01",
+        "date_to": "2026-12-31",
+        "page": 1,
+        "page_size": 20,
+    })
+    assert response.status_code == 200, response.text
+    explain = response.json()["explain"]
+    winning_plan = explain["queryPlanner"]["winningPlan"]
+    import json
+    plan_text = json.dumps(winning_plan)
+    assert "IXSCAN" in plan_text
+    assert "COLLSCAN" not in plan_text
