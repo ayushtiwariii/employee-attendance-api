@@ -132,7 +132,7 @@ class PunchInRequest(BaseModel):
 
     status: Literal["PRESENT", "WFH", "ON_DUTY"] = "PRESENT"
 
-    @field_validator("punched_at")
+    @field_validator("punched_at", mode="before")
 
     @classmethod
 
@@ -170,7 +170,7 @@ class RegularizeRequest(BaseModel):
 
     regularized_by: str = Field(min_length=1, max_length=50)
 
-    @field_validator("punch_in", "punch_out")
+    @field_validator("punch_in", "punch_out", mode="before")
 
     @classmethod
 
