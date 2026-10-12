@@ -702,7 +702,7 @@ def build_department_summary_pipeline(start, end, department=None):
         {"$match": match},
         {"$lookup": {"from": "attendance_logs", "let": {"code": "$emp_code"}, "pipeline": [
             {"$match": {"$expr": {"$and": [
-                {"$eq": ["$emp_code", "$code"]}, {"$gte": ["$date", start]}, {"$lte": ["$date", end]}
+                {"$eq": ["$emp_code", "$$code"]}, {"$gte": ["$date", start]}, {"$lte": ["$date", end]}
             ]}}}
         ], "as": "logs"}},
         {"$unwind": {"path": "$logs", "preserveNullAndEmptyArrays": True}},
@@ -926,7 +926,8 @@ def explain(endpoint:str,emp_code:Optional[str]=None,month:Optional[str]=None,de
 
             if department:f["department"]=department
 
-            pipeline=build_department_summary_pipeline(start,end,department)\n            exp=d.command("explain",{"aggregate":"employees","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="employees"
+            pipeline=build_department_summary_pipeline(start,end,department)
+            exp=d.command("explain",{"aggregate":"employees","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="employees"
 
         elif endpoint=="late_leaderboard":
 
@@ -942,6 +943,7 @@ def explain(endpoint:str,emp_code:Optional[str]=None,month:Optional[str]=None,de
 
             if b<a or (b-a).days+1>92:raise HTTPException(422,"Invalid date range")
 
-            pipeline=build_department_trend_pipeline(department,from_,to,a,b)\n            exp=d.command("explain",{"aggregate":"employees","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="employees"
+            pipeline=build_department_trend_pipeline(department,from_,to,a,b)
+            exp=d.command("explain",{"aggregate":"employees","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="employees"
 
     return {"endpoint":endpoint,"collection":coll,"explain":exp}
