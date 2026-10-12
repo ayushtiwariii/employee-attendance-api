@@ -747,24 +747,37 @@ def build_late_leaderboard_pipeline(start, end, department=None, limit=10):
 
 
 def build_department_trend_pipeline(department, from_, to, start, end):
+    # Generate one row per requested date inside MongoDB, starting from a known
+    # department employee. This also works when the department has zero logs.
+    days = (end - start).days + 1
+    start_dt = datetime.combine(start, time.min, timezone.utc)
     return [
-        {"$match": {"date": {"$gte": from_, "$lte": to}}},
-        {"$lookup": {"from": "employees", "localField": "emp_code", "foreignField": "emp_code", "as": "employee"}},
-        {"$unwind": "$employee"},
-        {"$match": {"employee.department": department}},
-        {"$group": {"_id": "$date",
-            "present_count": {"$sum": {"$cond": [{"$in": ["$status", list(PRESENCE)]}, {"$cond": ["$half_day", 0.5, 1]}, 0]}},
-            "late_count": {"$sum": {"$cond": [{"$gt": ["$late_minutes", 0]}, 1, 0]}}
-        }},
-        {"$project": {"_id": 0, "date": "$_id", "present_count": 1, "late_count": 1}},
-        {"$addFields": {"date": {"$dateFromString": {"dateString": "$date"}}}},
-        {"$densify": {"field": "date", "range": {"step": 1, "unit": "day", "bounds": [datetime.combine(start, time.min), datetime.combine(end, time.min)]}}},
-        {"$addFields": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$date"}}, "present_count": {"$ifNull": ["$present_count", 0]}, "late_count": {"$ifNull": ["$late_count", 0]}}},
-        {"$lookup": {"from": "employees", "let": {"day": "$date"}, "pipeline": [
-            {"$match": {"$expr": {"$and": [{"$eq": ["$department", department]}, {"$lte": ["$joined_on", "$day"]}]}}},
+        {"$match": {"department": department}},
+        {"$limit": 1},
+        {"$project": {"_id": 0, "department": 1}},
+        {"$addFields": {"_day_offsets": {"$range": [0, days]}, "_range_start": start_dt}},
+        {"$unwind": "$_day_offsets"},
+        {"$addFields": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$dateAdd": {"startDate": "$_range_start", "unit": "day", "amount": "$_day_offsets"}}}}}},
+        {"$lookup": {"from": "attendance_logs", "let": {"day": "$date", "dept": "$department"}, "pipeline": [
+            {"$match": {"$expr": {"$eq": ["$date", "$$day"]}}},
+            {"$lookup": {"from": "employees", "localField": "emp_code", "foreignField": "emp_code", "as": "employee"}},
+            {"$unwind": "$employee"},
+            {"$match": {"$expr": {"$eq": ["$employee.department", "$$dept"]}}},
+            {"$group": {"_id": None,
+                "present_count": {"$sum": {"$cond": [{"$in": ["$status", list(PRESENCE)]}, {"$cond": ["$half_day", 0.5, 1]}, 0]}},
+                "late_count": {"$sum": {"$cond": [{"$gt": ["$late_minutes", 0]}, 1, 0]}}
+            }}
+        ], "as": "stats"}},
+        {"$lookup": {"from": "employees", "let": {"day": "$date", "dept": "$department"}, "pipeline": [
+            {"$match": {"$expr": {"$and": [{"$eq": ["$department", "$$dept"]}, {"$lte": ["$joined_on", "$$day"]}]}}},
             {"$count": "n"}
         ], "as": "hc"}},
-        {"$addFields": {"headcount": {"$ifNull": [{"$arrayElemAt": ["$hc.n", 0]}, 0]}, "is_working_day": {"$in": [{"$dayOfWeek": {"$dateFromString": {"dateString": "$date"}}}, [2, 3, 4, 5, 6]]}}},
+        {"$addFields": {
+            "headcount": {"$ifNull": [{"$arrayElemAt": ["$hc.n", 0]}, 0]},
+            "present_count": {"$ifNull": [{"$arrayElemAt": ["$stats.present_count", 0]}, 0]},
+            "late_count": {"$ifNull": [{"$arrayElemAt": ["$stats.late_count", 0]}, 0]},
+            "is_working_day": {"$in": [{"$dayOfWeek": {"$dateFromString": {"dateString": "$date"}}}, [2, 3, 4, 5, 6]]}
+        }},
         {"$addFields": {"attendance_rate": {"$cond": [{"$and": ["$is_working_day", {"$gt": ["$headcount", 0]}]}, {"$divide": ["$present_count", "$headcount"]}, None]}}},
         {"$setWindowFields": {"sortBy": {"date": 1}, "output": {"_avg": {"$avg": "$attendance_rate", "window": {"documents": [-6, 0]}}}}},
         {"$project": {"_id": 0, "date": 1, "is_working_day": 1, "headcount": 1, "present_count": 1, "late_count": 1, "attendance_rate": 1, "moving_avg_7d": "$_avg"}},
@@ -842,7 +855,7 @@ def department_trend(department:str,from_:str=Query(...,alias="from"),to:str=Que
 
     pipeline=build_department_trend_pipeline(department,from_,to,start,end)
 
-    try:items=list(d.attendance_logs.aggregate(pipeline,allowDiskUse=True))
+    try:items=list(d.employees.aggregate(pipeline,allowDiskUse=True))
 
     except OperationFailure as e:raise HTTPException(503,"MongoDB 5.0+ is required for trend analytics") from e
 
@@ -850,25 +863,6 @@ def department_trend(department:str,from_:str=Query(...,alias="from"),to:str=Que
 
         x["present_count"]=qround(x.get("present_count",0)); x["attendance_rate"]=qround(x.get("attendance_rate"),4); x["moving_avg_7d"]=qround(x.get("moving_avg_7d"),4)
 
-    # If the range has no attendance at all, densify has no seed rows; fill the requested range explicitly as a fallback.
-
-    if not items:
-
-        emps=list(d.employees.find({"department":department},{"joined_on":1,"_id":0}))
-
-        day=start
-
-        while day<=end:
-
-            hc=sum(1 for e in emps if e["joined_on"]<=day.isoformat()); working=day.weekday()<5
-
-            items.append({"date":day.isoformat(),"is_working_day":working,"headcount":hc,"present_count":0,"late_count":0,"attendance_rate":0.0 if working and hc else None,"moving_avg_7d":None}); day+=timedelta(days=1)
-
-        for i,x in enumerate(items):
-
-            vals=[z["attendance_rate"] for z in items[max(0,i-6):i+1] if z["attendance_rate"] is not None]
-
-            x["moving_avg_7d"]=qround(sum(vals)/len(vals),4) if vals else None
 
     return {"department":department,"items":items}
 
@@ -952,6 +946,6 @@ def explain(endpoint:str,emp_code:Optional[str]=None,month:Optional[str]=None,de
 
             if b<a or (b-a).days+1>92:raise HTTPException(422,"Invalid date range")
 
-            pipeline=build_department_trend_pipeline(department,from_,to,a,b)\n            exp=d.command("explain",{"aggregate":"attendance_logs","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="attendance_logs"
+            pipeline=build_department_trend_pipeline(department,from_,to,a,b)\n            exp=d.command("explain",{"aggregate":"employees","pipeline":pipeline,"cursor":{}},verbosity="executionStats");coll="employees"
 
     return {"endpoint":endpoint,"collection":coll,"explain":exp}
