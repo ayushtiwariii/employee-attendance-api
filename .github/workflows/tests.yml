@@ -2,7 +2,7 @@ name: Python tests
 
 on:
   push:
-    branches: ["main", "fix/contract-correctness-tests"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
 
