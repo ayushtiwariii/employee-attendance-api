@@ -903,9 +903,7 @@ def explain(endpoint:str,emp_code:Optional[str]=None,month:Optional[str]=None,de
 
         filt=attendance_filter(emp_code,date_from,date_to,status)
 
-        cur=d.attendance_logs.find(filt).sort([("date",DESCENDING),("emp_code",ASCENDING)]).skip((page-1)*page_size).limit(page_size)
-
-        exp=cur.explain(verbosity="executionStats"); coll="attendance_logs"
+        exp=d.command("explain",{"find":"attendance_logs","filter":filt,"sort":{"date":DESCENDING,"emp_code":ASCENDING},"skip":(page-1)*page_size,"limit":page_size},verbosity="executionStats"); coll="attendance_logs"
 
     else:
 
