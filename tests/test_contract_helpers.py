@@ -4,6 +4,8 @@ import pytest
 
 from app.main import (
     EmployeeCreate,
+    PunchInRequest,
+    PunchOutRequest,
     RegularizeRequest,
     build_department_trend_pipeline,
     calc_fields,
@@ -21,6 +23,16 @@ def test_epoch_milliseconds_are_strict():
     for invalid in (True, 1_800_000_000, 1.5, "1800000000000", 99_999_999_999):
         with pytest.raises(ValueError):
             epoch_ms(invalid)
+
+
+def test_request_models_reject_timestamp_coercion():
+    for value in ("1800000000000", 1_800_000_000_000.0, 1_800_000_000_000.5):
+        with pytest.raises(Exception):
+            PunchInRequest(emp_code="EMP0001", punched_at=value)
+        with pytest.raises(Exception):
+            PunchOutRequest(emp_code="EMP0001", punched_at=value)
+        with pytest.raises(Exception):
+            RegularizeRequest(punch_in=value, reason="valid correction", regularized_by="hr")
 
 
 def test_rounding_is_half_up():
