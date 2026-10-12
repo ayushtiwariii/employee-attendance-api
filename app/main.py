@@ -197,6 +197,7 @@ async def lifespan(app: FastAPI):
             db.employees.create_index([("emp_code", ASCENDING)], unique=True, name="uq_employee_code")
 
             db.employees.create_index([("department", ASCENDING), ("joined_on", ASCENDING)], name="department_joined")
+            db.employees.create_index([("joined_on", ASCENDING)], name="employee_joined")
 
             db.attendance_logs.create_index([("emp_code", ASCENDING), ("date", ASCENDING)], unique=True, name="uq_attendance_employee_date")
 
