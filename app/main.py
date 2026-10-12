@@ -831,10 +831,6 @@ def late_leaderboard(month:str=Query(...,pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),lim
 
     pipeline=build_late_leaderboard_pipeline(start,end,department,limit)
 
-    if department is not None:pipeline.append({"$match":{"employee.department":department}})
-
-    pipeline += [{"$setWindowFields":{"sortBy":{"total_late_minutes":-1},"output":{"rank":{"$rank":{}}}}},{"$match":{"rank":{"$lte":limit}}},{"$sort":{"total_late_minutes":-1,"_id":1}},{"$project":{"_id":0,"rank":1,"emp_code":"$_id","name":"$employee.name","department":"$employee.department","total_late_minutes":1,"late_count":1}}]
-
     try:items=list(d.attendance_logs.aggregate(pipeline,allowDiskUse=True))
 
     except OperationFailure as e:raise HTTPException(503,"MongoDB 5.0+ is required for ranking analytics") from e
