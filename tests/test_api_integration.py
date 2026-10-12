@@ -164,3 +164,49 @@ def test_attendance_explain_uses_index_with_100k_records(api):
     plan_text = json.dumps(winning_plan)
     assert "IXSCAN" in plan_text
     assert "COLLSCAN" not in plan_text
+
+
+def test_leaderboard_uses_competition_ranks_and_department_scope(api):
+    database = api_module.db
+    employees = []
+    logs = []
+    rows = [
+        ("EMP0001", "Engineering", 60),
+        ("EMP0002", "Engineering", 30),
+        ("EMP0003", "Engineering", 30),
+        ("EMP0004", "Sales", 100),
+    ]
+    for code, department, late_minutes in rows:
+        employees.append({
+            "emp_code": code,
+            "name": code,
+            "email": f"{code.lower()}@example.com",
+            "department": department,
+            "shift_start": "09:30",
+            "shift_end": "18:30",
+            "joined_on": "2026-01-01",
+            "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        })
+        logs.append({
+            "emp_code": code,
+            "date": "2026-07-06",
+            "status": "PRESENT",
+            "punch_in": datetime(2026, 7, 6, 4, tzinfo=timezone.utc),
+            "punch_out": None,
+            "work_hours": None,
+            "late_minutes": late_minutes,
+            "overtime_minutes": 0,
+        })
+    database.employees.insert_many(employees)
+    database.attendance_logs.insert_many(logs)
+
+    response = api.get("/analytics/leaderboard/late", params={
+        "month": "2026-07",
+        "limit": 2,
+        "department": "Engineering",
+    })
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [(x["emp_code"], x["rank"]) for x in items] == [
+        ("EMP0001", 1), ("EMP0002", 2), ("EMP0003", 2),
+    ]
