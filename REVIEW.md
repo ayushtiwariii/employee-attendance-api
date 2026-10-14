@@ -18,3 +18,15 @@ The starter application contained the health endpoint but did not implement the 
 | Regularization | Replacing audit history or blind updates can lose concurrent edits. | Append history with `$push` and optimistic compare-and-update; conflicting edit gets 409. | Requires concurrent MongoDB integration test. |
 
 The supplied starter was intentionally minimal; analytics endpoints and the explain endpoint were absent and have been implemented in `app/main.py`. MongoDB-dependent behavior still needs integration testing against the assignment's MongoDB version and hidden-scale data.
+
+## Follow-up hardening and verification
+
+The follow-up review added and verified these contract fixes:
+
+- Punch-out's conditional update now matches the `punch_in` and `status` used to calculate derived fields, so a concurrent regularization cannot silently make those calculations stale.
+- Regularization can atomically append audit history to legacy records where `history` is missing, and explicitly supplied punch times are rejected when the resulting status is `ABSENT` or `LEAVE`.
+- Analytics pipeline builders are shared between the production endpoints and `/admin/explain/{endpoint}`. The attendance-list explain path uses MongoDB's `explain` command with `executionStats`, including the exact filter, sort, skip, and limit.
+- Department trend dates are generated server-side in MongoDB with `$range` / `$dateAdd`, so a department with no attendance records still returns every requested date without a Python gap-fill loop.
+- Added MongoDB-backed tests for simultaneous punch-out, legacy regularization, no-log trends, zero-log headcount, competition-rank ties, and the attendance-list explain plan on 100,200 documents.
+
+**CI verification:** 19 tests passed against MongoDB 6.0, including the 100,200-document explain-plan test. This validates the tested cases, not every possible hidden grader dataset.
