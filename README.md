@@ -21,14 +21,6 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Configure `.env` if required:
-
-``` dotenv
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB=attendance_db
-```
-
-Never commit `.env` or credentials.
 
 Start the API:
 
