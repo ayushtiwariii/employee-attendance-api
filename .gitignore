@@ -13,9 +13,10 @@ htmlcov/
 
 # Environment variables and secrets
 .env
+.env.example
 
 # OpenAPI directory
 openapi/
 
 # Problem statement files
-PROBLEM_STATEMENT/
+PROBLEM_STATEMENT.docx
